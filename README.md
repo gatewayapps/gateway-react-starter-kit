@@ -6,4 +6,4 @@ I reorganized the project to be more inline with what we are used to.
 
 Things to do:
 * ~~Get gulp configured~~
-* Confingure development/production host files
+* ~~Confingure development/production host files~~
