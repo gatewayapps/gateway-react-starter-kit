@@ -1,107 +1,102 @@
-const argv = require('yargs').argv
 const webpack = require('webpack')
 const cssnano = require('cssnano')
+const path = require('path')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 const ExtractTextPlugin = require('extract-text-webpack-plugin')
-const project = require('./project.config')
-const debug = require('debug')('app:config:webpack')
+const config = require('./server')
 
-const __DEV__ = project.globals.__DEV__
-const __PROD__ = project.globals.__PROD__
-const __TEST__ = project.globals.__TEST__
+const paths = config.utils_paths
+const __DEV__ = config.globals.__DEV__
+const __PROD__ = config.globals.__PROD__
+const __TEST__ = config.globals.__TEST__
 
-debug('Creating configuration.')
+console.log('Creating configuration.')
 const webpackConfig = {
-  name    : 'client',
-  target  : 'web',
-  devtool : project.compiler_devtool,
-  resolve : {
-    root       : project.paths.client(),
-    extensions : ['', '.js', '.jsx', '.json']
+  name: 'client',
+  target: 'web',
+  devtool: config.compiler_devtool,
+  resolve: {
+    root: paths.client(),
+    extensions: ['', '.js', '.jsx', '.json'],
+    fallback: path.join(__dirname, '../../node_modules')
   },
-  module : {}
+  resolveLoader: {
+    fallback: path.join(__dirname, '../../node_modules')
+  },
+  module: {
+    noParse: [/localforage/, /google-libphonenumber/]
+  }
 }
 // ------------------------------------
 // Entry Points
 // ------------------------------------
-const APP_ENTRY = project.paths.client('main.js')
+const APP_ENTRY = paths.client('main.js')
+const APP_ENTRY_POINTS = [
 
+]
+if (__DEV__) {
+  APP_ENTRY_POINTS.push(
+    `webpack-hot-middleware/client?path=${config.compiler_public_path}__webpack_hmr`
+  )
+}
+APP_ENTRY_POINTS.push(
+  'react',
+  'react-dom',
+  'babel-polyfill',
+  APP_ENTRY
+)
+
+console.log('Web Server URL')
+console.log(config.compiler_public_path)
 webpackConfig.entry = {
-  app : __DEV__
-    ? [APP_ENTRY].concat(`webpack-hot-middleware/client?path=${project.compiler_public_path}__webpack_hmr`)
-    : [APP_ENTRY],
-  vendor : project.compiler_vendors
+  app: APP_ENTRY_POINTS,
+  vendor: config.compiler_vendors
 }
 
 // ------------------------------------
 // Bundle Output
 // ------------------------------------
 webpackConfig.output = {
-  filename   : `[name].[${project.compiler_hash_type}].js`,
-  path       : project.paths.dist(),
-  publicPath : project.compiler_public_path
+  filename: `[name].[${config.compiler_hash_type}].js`,
+  path: paths.dist(),
+  publicPath: config.compiler_public_path
 }
-
-// ------------------------------------
-// Externals
-// ------------------------------------
-webpackConfig.externals = {}
-webpackConfig.externals['react/lib/ExecutionEnvironment'] = true
-webpackConfig.externals['react/lib/ReactContext'] = true
-webpackConfig.externals['react/addons'] = true
 
 // ------------------------------------
 // Plugins
 // ------------------------------------
 webpackConfig.plugins = [
-  new webpack.DefinePlugin(project.globals),
+  new webpack.DefinePlugin(config.globals),
   new HtmlWebpackPlugin({
-    template : project.paths.client('index.html'),
-    hash     : false,
-    favicon  : project.paths.public('favicon.ico'),
-    filename : 'index.html',
-    inject   : 'body',
-    minify   : {
-      collapseWhitespace : true
+    template: paths.client('index.html'),
+    hash: false,
+    favicon: paths.client('static/favicon.ico'),
+    filename: 'index.html',
+    inject: 'body',
+    minify: {
+      collapseWhitespace: true
     }
   })
 ]
 
-// Ensure that the compiler exits on errors during testing so that
-// they do not get skipped and misreported.
-if (__TEST__ && !argv.watch) {
-  webpackConfig.plugins.push(function () {
-    this.plugin('done', function (stats) {
-      if (stats.compilation.errors.length) {
-        // Pretend no assets were generated. This prevents the tests
-        // from running making it clear that there were warnings.
-        throw new Error(
-          stats.compilation.errors.map(err => err.message || err)
-        )
-      }
-    })
-  })
-}
-
 if (__DEV__) {
-  debug('Enabling plugins for live development (HMR, NoErrors).')
+  console.log('Enable plugins for live development (HMR, NoErrors).')
   webpackConfig.plugins.push(
     new webpack.HotModuleReplacementPlugin(),
     new webpack.NoErrorsPlugin()
   )
 } else if (__PROD__) {
-  debug('Enabling plugins for production (OccurenceOrder, Dedupe & UglifyJS).')
+  console.log('Enable plugins for production (OccurenceOrder, Dedupe & UglifyJS).')
   webpackConfig.plugins.push(
     new webpack.optimize.OccurrenceOrderPlugin(),
     new webpack.optimize.DedupePlugin(),
     new webpack.optimize.UglifyJsPlugin({
-      compress : {
-        unused    : true,
-        dead_code : true,
-        warnings  : false
+      compress: {
+        unused: true,
+        dead_code: true,
+        warnings: false
       }
-    }),
-    new webpack.optimize.AggressiveMergingPlugin()
+    })
   )
 }
 
@@ -109,7 +104,7 @@ if (__DEV__) {
 if (!__TEST__) {
   webpackConfig.plugins.push(
     new webpack.optimize.CommonsChunkPlugin({
-      names : ['vendor']
+      names: ['vendor']
     })
   )
 }
@@ -119,13 +114,13 @@ if (!__TEST__) {
 // ------------------------------------
 // JavaScript / JSON
 webpackConfig.module.loaders = [{
-  test    : /\.(js|jsx)$/,
-  exclude : /node_modules/,
-  loader  : 'babel',
-  query   : project.compiler_babel
+  test: /\.(js|jsx)$/,
+  exclude: /node_modules/,
+  loader: 'babel',
+  query: config.compiler_babel
 }, {
-  test   : /\.json$/,
-  loader : 'json'
+  test: /\.json$/,
+  loader: 'json'
 }]
 
 // ------------------------------------
@@ -133,60 +128,97 @@ webpackConfig.module.loaders = [{
 // ------------------------------------
 // We use cssnano with the postcss loader, so we tell
 // css-loader not to duplicate minimization.
-const BASE_CSS_LOADER = 'css?sourceMap&-minimize'
+const BASE_CSS_LOADER = 'css?localIdentName=[local]__[path][name]__[hash:base64:5]' +
+  '&modules&importLoaders=1&sourceMap&-minimize'
+
+const cssPaths = [/node_modules/]
+const scssPaths = [/node_modules/, /app[/\\]styles/]
+
+if (__DEV__) {
+  cssPaths.push(/ims-shared-client/)
+}
 
 webpackConfig.module.loaders.push({
-  test    : /\.scss$/,
-  exclude : null,
-  loaders : [
+  test: /\.scss$/,
+  exclude: scssPaths,
+  loaders: [
     'style',
     BASE_CSS_LOADER,
     'postcss',
     'sass?sourceMap'
   ]
 })
+
+// Do not transform styles loaded from app/styles folder with
+// CSS modules
 webpackConfig.module.loaders.push({
-  test    : /\.css$/,
-  exclude : null,
-  loaders : [
+  test: /\.scss$/,
+  include: scssPaths,
+  loaders: [
+    'style',
+    'css?importLoaders=1&-minimize',
+    'postcss',
+    'sass?sourceMap'
+  ]
+})
+
+webpackConfig.module.loaders.push({
+  test: /\.css$/,
+  exclude: cssPaths,
+  loaders: [
     'style',
     BASE_CSS_LOADER,
     'postcss'
   ]
 })
 
+// Do not transform vendor's CSS with CSS-modules
+// The point is that they remain in global scope.
+// Since we require these CSS files in our JS or CSS files,
+// they will be a part of our compilation either way.
+// So, no need for ExtractTextPlugin here.
+webpackConfig.module.loaders.push({
+  test: /\.css$/,
+  include: cssPaths,
+  loaders: [
+    'style',
+    'css?importLoaders=1',
+    'postcss'
+  ]
+})
+
 webpackConfig.sassLoader = {
-  includePaths : project.paths.client('styles')
+  includePaths: paths.client('styles')
 }
 
 webpackConfig.postcss = [
   cssnano({
-    autoprefixer : {
-      add      : true,
-      remove   : true,
-      browsers : ['last 2 versions']
+    autoprefixer: {
+      add: true,
+      remove: true,
+      browsers: ['last 2 versions']
     },
-    discardComments : {
-      removeAll : true
+    discardComments: {
+      removeAll: true
     },
-    discardUnused : false,
-    mergeIdents   : false,
-    reduceIdents  : false,
-    safe          : true,
-    sourcemap     : true
+    discardUnused: false,
+    mergeIdents: false,
+    reduceIdents: false,
+    safe: true,
+    sourcemap: true
   })
 ]
 
 // File loaders
 /* eslint-disable */
 webpackConfig.module.loaders.push(
-  { test: /\.woff(\?.*)?$/,  loader: 'url?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=application/font-woff' },
+  { test: /\.woff(\?.*)?$/, loader: 'url?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=application/font-woff' },
   { test: /\.woff2(\?.*)?$/, loader: 'url?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=application/font-woff2' },
-  { test: /\.otf(\?.*)?$/,   loader: 'file?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=font/opentype' },
-  { test: /\.ttf(\?.*)?$/,   loader: 'url?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=application/octet-stream' },
-  { test: /\.eot(\?.*)?$/,   loader: 'file?prefix=fonts/&name=[path][name].[ext]' },
-  { test: /\.svg(\?.*)?$/,   loader: 'url?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=image/svg+xml' },
-  { test: /\.(png|jpg)$/,    loader: 'url?limit=8192' }
+  { test: /\.otf(\?.*)?$/, loader: 'file?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=font/opentype' },
+  { test: /\.ttf(\?.*)?$/, loader: 'url?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=application/octet-stream' },
+  { test: /\.eot(\?.*)?$/, loader: 'file?prefix=fonts/&name=[path][name].[ext]' },
+  { test: /\.svg(\?.*)?$/, loader: 'url?prefix=fonts/&name=[path][name].[ext]&limit=10000&mimetype=image/svg+xml' },
+  { test: /\.(png|jpg)$/, loader: 'url?limit=8192' }
 )
 /* eslint-enable */
 
@@ -197,7 +229,7 @@ webpackConfig.module.loaders.push(
 // need to use the extractTextPlugin to fix this issue:
 // http://stackoverflow.com/questions/34133808/webpack-ots-parsing-error-loading-fonts/34133809#34133809
 if (!__DEV__) {
-  debug('Applying ExtractTextPlugin to CSS loaders.')
+  console.log('Apply ExtractTextPlugin to CSS loaders.')
   webpackConfig.module.loaders.filter((loader) =>
     loader.loaders && loader.loaders.find((name) => /css/.test(name.split('?')[0]))
   ).forEach((loader) => {
@@ -209,7 +241,7 @@ if (!__DEV__) {
 
   webpackConfig.plugins.push(
     new ExtractTextPlugin('[name].[contenthash].css', {
-      allChunks : true
+      allChunks: true
     })
   )
 }
